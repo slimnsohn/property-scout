@@ -1,0 +1,501 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover, user-scalable=no">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="theme-color" content="#0f0f14">
+<title>Property Scout</title>
+<link href="https://fonts.googleapis.com/css2?family=Playfair+Display:wght@700&family=DM+Sans:wght@400;500;600&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/PapaParse/5.4.1/papaparse.min.js"></script>
+<style>
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  html, body, #root {
+    height: 100%; height: 100dvh;
+    overflow: hidden;
+    background: #0f0f14;
+    font-family: 'DM Sans', sans-serif;
+    -webkit-tap-highlight-color: transparent;
+    -webkit-user-select: none; user-select: none;
+    touch-action: manipulation;
+  }
+</style>
+</head>
+<body>
+<div id="root"></div>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.2.0/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.2.0/umd/react-dom.production.min.js"></script>
+<script>
+// ============================================================
+//  CONFIG — Paste your Google Sheet published CSV URL below
+//  
+//  To get this URL:
+//  1. Open your Google Sheet
+//  2. File → Share → Publish to web
+//  3. Choose the correct sheet tab
+//  4. Format: CSV
+//  5. Click Publish, copy the URL, paste below
+//
+//  Expected columns (header row required):
+//    A: Address
+//    B: Redfin Link
+//    C: List Price
+//    D: Sold Price
+//    E: Notes
+// ============================================================
+var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTTZyB3gMzIQ1XaYo16GK_9DNgLxd5nkMj36vhaJ7ytYB5--c0mG_JSaAGczSNpmkUXBeUtgCMlwog7/pub?gid=0&single=true&output=csv";
+// ============================================================
+
+var useState = React.useState;
+var useRef = React.useRef;
+var useCallback = React.useCallback;
+var useEffect = React.useEffect;
+var e = React.createElement;
+
+var PALETTES = [
+  { bg:"#1a2f23", accent:"#4ade80", light:"#d1fae5" },
+  { bg:"#1e293b", accent:"#60a5fa", light:"#dbeafe" },
+  { bg:"#2d1b3d", accent:"#c084fc", light:"#f3e8ff" },
+  { bg:"#3b1c1c", accent:"#fb923c", light:"#ffedd5" },
+  { bg:"#1c2d3b", accent:"#22d3ee", light:"#cffafe" },
+  { bg:"#2b2318", accent:"#fbbf24", light:"#fef3c7" },
+  { bg:"#1b2d2d", accent:"#2dd4bf", light:"#ccfbf1" },
+  { bg:"#2e1a2e", accent:"#f472b6", light:"#fce7f3" },
+  { bg:"#1a1a2e", accent:"#818cf8", light:"#e0e7ff" },
+];
+
+function parsePrice(val) {
+  if (!val) return null;
+  var n = Number(String(val).replace(/[^0-9.-]/g, ""));
+  return isNaN(n) || n === 0 ? null : n;
+}
+
+function parseTags(notes, listPrice, soldPrice) {
+  var tags = [];
+  if (!notes) return tags;
+  var lower = notes.toLowerCase();
+  if (lower.includes("tear down")) tags.push("tear down");
+  if (lower.includes("small")) tags.push("small layout");
+  if (lower.includes("no garage")) tags.push("no garage");
+  if (lower.includes("pricey")) tags.push("pricey");
+  if (lower.includes("weird")) tags.push("weird layout");
+  if (lower.includes("unlisted")) tags.push("unlisted");
+  if (lower.includes("far north")) tags.push("far north");
+  if (lower.includes("next to")) tags.push("location concern");
+  if (soldPrice) tags.push("sold");
+  if (tags.length === 0) tags.push(notes.toLowerCase().substring(0, 20));
+  return tags;
+}
+
+function loadSheet(callback) {
+  if (SHEET_CSV_URL === "PASTE_YOUR_CSV_URL_HERE") {
+    callback(null, "No sheet URL configured. Open index.html and paste your Google Sheet CSV URL into the SHEET_CSV_URL variable at the top.");
+    return;
+  }
+  Papa.parse(SHEET_CSV_URL, {
+    download: true,
+    header: false,
+    skipEmptyLines: true,
+    complete: function(results) {
+      var rows = results.data;
+      if (rows.length < 2) { callback(null, "Sheet appears empty."); return; }
+      // Skip header row
+      var properties = [];
+      for (var i = 1; i < rows.length; i++) {
+        var r = rows[i];
+        var address = (r[0] || "").trim();
+        if (!address) continue;
+        var link = (r[1] || "").trim();
+        var listPrice = parsePrice(r[2]);
+        var soldPrice = parsePrice(r[3]);
+        var notes = (r[4] || "").trim();
+        // Extract area from link or default
+        var area = "";
+        if (link.includes("Glenview")) area = "Glenview, IL";
+        else if (link.includes("Northbrook")) area = "Northbrook, IL";
+        else {
+          var match = link.match(/\/([A-Z][a-z]+(?:-[A-Z][a-z]+)*)\//);
+          area = match ? match[1].replace(/-/g, " ") + ", IL" : "IL";
+        }
+        properties.push({
+          id: i,
+          address: address,
+          area: area,
+          link: link.startsWith("http") ? link : (link ? "https://" + link : ""),
+          listPrice: listPrice,
+          soldPrice: soldPrice,
+          notes: notes || "No notes",
+          tags: parseTags(notes, listPrice, soldPrice),
+        });
+      }
+      if (properties.length === 0) { callback(null, "No properties found in sheet."); return; }
+      callback(properties, null);
+    },
+    error: function(err) {
+      callback(null, "Failed to load sheet: " + err.message);
+    }
+  });
+}
+
+var fmt = function(n) { return n ? "$" + n.toLocaleString() : "—"; };
+
+function PropertyCard(props) {
+  var property = props.property, palette = props.palette, style = props.style;
+  var onSwipeLeft = props.onSwipeLeft, onSwipeRight = props.onSwipeRight, active = props.active;
+  var startX = useRef(0), startY = useRef(0), currentX = useRef(0);
+  var isDragging = useRef(false), isHorizontal = useRef(null);
+  var _drag = useState(0), dragOffset = _drag[0], setDragOffset = _drag[1];
+  var _dir = useState(null), dragDir = _dir[0], setDragDir = _dir[1];
+
+  var handleStart = useCallback(function(cx, cy) {
+    if (!active) return;
+    isDragging.current = true; isHorizontal.current = null;
+    startX.current = cx; startY.current = cy; currentX.current = cx;
+  }, [active]);
+
+  var handleMove = useCallback(function(cx, cy, ev) {
+    if (!isDragging.current || !active) return;
+    if (isHorizontal.current === null) {
+      var dx = Math.abs(cx - startX.current), dy = Math.abs(cy - startY.current);
+      if (dx > 6 || dy > 6) isHorizontal.current = dx > dy;
+      return;
+    }
+    if (!isHorizontal.current) return;
+    if (ev && ev.cancelable) ev.preventDefault();
+    currentX.current = cx;
+    var diff = cx - startX.current;
+    setDragOffset(diff);
+    setDragDir(diff > 25 ? "right" : diff < -25 ? "left" : null);
+  }, [active]);
+
+  var handleEnd = useCallback(function() {
+    if (!isDragging.current || !active) return;
+    isDragging.current = false;
+    var diff = currentX.current - startX.current;
+    if (isHorizontal.current) {
+      if (diff > 70) onSwipeRight && onSwipeRight();
+      else if (diff < -70) onSwipeLeft && onSwipeLeft();
+    }
+    isHorizontal.current = null;
+    setDragOffset(0); setDragDir(null);
+  }, [active, onSwipeLeft, onSwipeRight]);
+
+  var rotation = active ? dragOffset * 0.05 : 0;
+  var opacity = active ? Math.max(0.4, 1 - Math.abs(dragOffset) / 400) : 1;
+  var pal = palette;
+
+  return e("div", {
+    style: Object.assign({}, style, {
+      transform: (style.transform || "") + " translateX(" + (active ? dragOffset : 0) + "px) rotate(" + rotation + "deg)",
+      opacity: opacity,
+      transition: (isDragging.current && isHorizontal.current) ? "none" : "all 0.4s cubic-bezier(.175,.885,.32,1.275)",
+      touchAction: active ? "pan-y" : "none",
+    }),
+    onMouseDown: function(ev) { ev.preventDefault(); handleStart(ev.clientX, ev.clientY); },
+    onMouseMove: function(ev) { handleMove(ev.clientX, ev.clientY, ev); },
+    onMouseUp: handleEnd, onMouseLeave: handleEnd,
+    onTouchStart: function(ev) { handleStart(ev.touches[0].clientX, ev.touches[0].clientY); },
+    onTouchMove: function(ev) { handleMove(ev.touches[0].clientX, ev.touches[0].clientY, ev); },
+    onTouchEnd: handleEnd,
+  },
+    active && dragDir === "right" && e("div", { style: {
+      position:"absolute", top:16, left:14, zIndex:10,
+      background:"#22c55e", color:"#fff", fontFamily:"'DM Mono', monospace",
+      padding:"4px 12px", borderRadius:6, fontSize:14, fontWeight:700,
+      letterSpacing:2, border:"2px solid #fff", transform:"rotate(-12deg)",
+    }}, "INTERESTED"),
+    active && dragDir === "left" && e("div", { style: {
+      position:"absolute", top:16, right:14, zIndex:10,
+      background:"#ef4444", color:"#fff", fontFamily:"'DM Mono', monospace",
+      padding:"4px 12px", borderRadius:6, fontSize:14, fontWeight:700,
+      letterSpacing:2, border:"2px solid #fff", transform:"rotate(12deg)",
+    }}, "PASS"),
+    e("div", { style: {
+      position:"absolute", inset:0, borderRadius:20,
+      background:"linear-gradient(145deg, "+pal.bg+", "+pal.bg+"ee, "+pal.bg+"cc)",
+      border:"1px solid "+pal.accent+"33",
+      boxShadow:"0 16px 48px "+pal.bg+"88, inset 0 1px 0 "+pal.accent+"22",
+      overflow:"hidden", display:"flex", flexDirection:"column",
+    }},
+      e("div", { style: {
+        flex:"0 0 auto", padding:"14px 18px 12px", position:"relative",
+        background:"linear-gradient(135deg, "+pal.accent+"22, "+pal.accent+"06)", overflow:"hidden",
+      }},
+        e("div", { style: { position:"absolute", top:-40, right:-40, width:120, height:120, borderRadius:"50%", background:pal.accent+"11" }}),
+        e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:3, color:pal.accent+"88", textTransform:"uppercase", marginBottom:6 }},
+          property.area.split(",")[0] || "Property"
+        ),
+        e("div", { style: {
+          fontFamily:"'Playfair Display', Georgia, serif", fontSize:"clamp(20px, 5.5vw, 28px)",
+          fontWeight:700, color:pal.light, lineHeight:1.15, letterSpacing:-0.5,
+        }}, property.address),
+        e("div", { style: { fontFamily:"'DM Sans', sans-serif", fontSize:11, color:pal.light+"88", marginTop:3 }}, property.area)
+      ),
+      e("div", { style: { flex:1, padding:"14px 18px", display:"flex", flexDirection:"column", minHeight:0 }},
+        e("div", { style: { display:"flex", gap:20, marginBottom:12 }},
+          e("div", null,
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:2, color:pal.accent+"aa", marginBottom:2, textTransform:"uppercase" }}, "List"),
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:"clamp(17px, 4.5vw, 22px)", fontWeight:600, color:pal.light }}, fmt(property.listPrice))
+          ),
+          e("div", null,
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:2, color:pal.accent+"aa", marginBottom:2, textTransform:"uppercase" }}, "Sold"),
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:"clamp(17px, 4.5vw, 22px)", fontWeight:600, color:property.soldPrice ? "#22c55e" : pal.light+"44" }}, fmt(property.soldPrice))
+          )
+        ),
+        e("div", { style: { height:1, background:"linear-gradient(90deg, "+pal.accent+"33, transparent)", marginBottom:10, flexShrink:0 }}),
+        e("div", { style: { fontFamily:"'DM Sans', sans-serif", fontSize:14, color:pal.light+"cc", lineHeight:1.5, marginBottom:10 }}, property.notes),
+        e("div", { style: { display:"flex", flexWrap:"wrap", gap:6, marginBottom:12 }},
+          property.tags.map(function(tag) {
+            return e("span", { key:tag, style: {
+              fontFamily:"'DM Mono', monospace", fontSize:10, letterSpacing:1,
+              padding:"3px 10px", borderRadius:16,
+              background:pal.accent+"18", color:pal.accent,
+              border:"1px solid "+pal.accent+"33", textTransform:"uppercase",
+            }}, tag);
+          })
+        ),
+        e("div", { style: { flex:1 }}),
+        property.link && e("a", {
+          href:property.link, target:"_blank", rel:"noopener noreferrer",
+          onClick:function(ev){ev.stopPropagation();},
+          onMouseDown:function(ev){ev.stopPropagation();},
+          onTouchStart:function(ev){ev.stopPropagation();},
+          style: {
+            display:"inline-flex", alignItems:"center", gap:6,
+            fontFamily:"'DM Mono', monospace", fontSize:11, letterSpacing:1,
+            color:pal.accent, textDecoration:"none",
+            padding:"8px 14px", borderRadius:8, alignSelf:"flex-start",
+            background:pal.accent+"11", border:"1px solid "+pal.accent+"22",
+          }
+        }, "VIEW ON REDFIN →")
+      )
+    )
+  );
+}
+
+function App() {
+  var _props = useState(null), properties = _props[0], setProperties = _props[1];
+  var _err = useState(null), error = _err[0], setError = _err[1];
+  var _loading = useState(true), loading = _loading[0], setLoading = _loading[1];
+  var _current = useState(0), current = _current[0], setCurrent = _current[1];
+  var _liked = useState([]), liked = _liked[0], setLiked = _liked[1];
+  var _passed = useState([]), passed = _passed[0], setPassed = _passed[1];
+  var _exiting = useState(null), exiting = _exiting[0], setExiting = _exiting[1];
+
+  useEffect(function() {
+    loadSheet(function(data, err) {
+      if (err) setError(err);
+      else setProperties(data);
+      setLoading(false);
+    });
+  }, []);
+
+  var doSwipe = function(dir) {
+    if (!properties || current >= properties.length || exiting) return;
+    setExiting(dir);
+    setTimeout(function() {
+      if (dir === "right") setLiked(function(p) { return p.concat(properties[current]); });
+      else setPassed(function(p) { return p.concat(properties[current]); });
+      setCurrent(function(c) { return c + 1; });
+      setExiting(null);
+    }, 300);
+  };
+
+  var reset = function() { setCurrent(0); setLiked([]); setPassed([]); };
+  var refresh = function() {
+    setLoading(true); setError(null); setProperties(null);
+    setCurrent(0); setLiked([]); setPassed([]);
+    loadSheet(function(data, err) {
+      if (err) setError(err);
+      else setProperties(data);
+      setLoading(false);
+    });
+  };
+
+  var done = properties && current >= properties.length;
+
+  // Loading state
+  if (loading) {
+    return e("div", { style: {
+      height:"100vh", height:"100dvh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", background:"#0f0f14",
+    }},
+      e("div", { style: {
+        fontFamily:"'Playfair Display', serif", fontSize:24, color:"#f0f0f0", marginBottom:12,
+      }}, "Property Scout"),
+      e("div", { style: {
+        fontFamily:"'DM Mono', monospace", fontSize:12, color:"#666", letterSpacing:2,
+      }}, "LOADING SHEET..."),
+      e("div", { style: {
+        width:40, height:4, background:"#ffffff11", borderRadius:2, marginTop:16, overflow:"hidden",
+      }},
+        e("div", { style: {
+          width:"60%", height:"100%", background:"#4ade80",
+          borderRadius:2, animation:"pulse 1s ease-in-out infinite alternate",
+        }})
+      ),
+      e("style", null, "@keyframes pulse { from { opacity:0.4; width:30%; } to { opacity:1; width:80%; } }")
+    );
+  }
+
+  // Error state
+  if (error) {
+    return e("div", { style: {
+      height:"100vh", height:"100dvh", display:"flex", flexDirection:"column",
+      alignItems:"center", justifyContent:"center", background:"#0f0f14", padding:24, textAlign:"center",
+    }},
+      e("div", { style: { fontSize:48, marginBottom:16 }}, "⚠️"),
+      e("div", { style: {
+        fontFamily:"'Playfair Display', serif", fontSize:22, color:"#f0f0f0", marginBottom:12,
+      }}, "Setup Required"),
+      e("div", { style: {
+        fontFamily:"'DM Sans', sans-serif", fontSize:14, color:"#999", lineHeight:1.6,
+        maxWidth:340, marginBottom:20,
+      }}, error),
+      e("div", { style: {
+        fontFamily:"'DM Mono', monospace", fontSize:11, color:"#666", lineHeight:1.8,
+        maxWidth:340, textAlign:"left", background:"#ffffff08", padding:16, borderRadius:12,
+        border:"1px solid #ffffff11",
+      }},
+        "1. Open your Google Sheet", e("br"),
+        "2. File → Share → Publish to web", e("br"),
+        "3. Select your tab → CSV format", e("br"),
+        "4. Copy the URL", e("br"),
+        "5. Paste it in index.html line ~25"
+      )
+    );
+  }
+
+  return e("div", { style: {
+    height:"100vh", height:"100dvh",
+    display:"flex", flexDirection:"column", alignItems:"center", justifyContent:"center",
+    padding:"max(12px, env(safe-area-inset-top)) 12px max(12px, env(safe-area-inset-bottom))",
+    background:"#0f0f14", fontFamily:"'DM Sans', sans-serif", boxSizing:"border-box", overflow:"hidden",
+  }},
+    // Header
+    e("div", { style: { textAlign:"center", marginBottom:12, flexShrink:0 }},
+      e("h1", { style: {
+        fontFamily:"'Playfair Display', serif", fontSize:"clamp(20px, 5vw, 28px)",
+        fontWeight:700, color:"#f0f0f0", margin:0,
+      }}, "Property Scout"),
+      e("div", { style: { display:"flex", alignItems:"center", justifyContent:"center", gap:12, marginTop:4 }},
+        e("p", { style: {
+          fontFamily:"'DM Mono', monospace", fontSize:10, letterSpacing:2,
+          color:"#555", textTransform:"uppercase", margin:0,
+        }}, done ? "All reviewed" : (current + 1) + " of " + properties.length),
+        e("button", { onClick:refresh, "aria-label":"Refresh from sheet", style: {
+          background:"none", border:"none", color:"#555", fontSize:14, cursor:"pointer",
+          padding:4, lineHeight:1,
+        }}, "↻")
+      )
+    ),
+
+    done ?
+      e("div", { style: { width:"100%", maxWidth:380, flex:1, overflowY:"auto", WebkitOverflowScrolling:"touch", padding:"0 2px" }},
+        e("div", { style: { background:"#1a1a24", borderRadius:20, padding:"20px 16px", border:"1px solid #ffffff0f" }},
+          e("div", { style: { fontSize:40, marginBottom:6, textAlign:"center" }}, "🏠"),
+          e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:11, color:"#888", letterSpacing:1, marginBottom:16, textTransform:"uppercase", textAlign:"center" }},
+            liked.length + " Interested · " + passed.length + " Passed"
+          ),
+          liked.length > 0 && e("div", { style: { marginBottom:14 }},
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:10, letterSpacing:2, color:"#4ade80", marginBottom:8, textTransform:"uppercase" }}, "Interested"),
+            liked.map(function(p) {
+              return e("a", { key:p.id, href:p.link, target:"_blank", rel:"noopener noreferrer", style: {
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+                padding:"10px 12px", marginBottom:5, borderRadius:10,
+                background:"#4ade8010", border:"1px solid #4ade8022", textDecoration:"none",
+              }},
+                e("span", { style: { fontFamily:"'DM Sans'", fontSize:13, color:"#d1fae5" }}, p.address),
+                e("span", { style: { fontFamily:"'DM Mono'", fontSize:11, color:"#4ade80", flexShrink:0, marginLeft:8 }}, fmt(p.listPrice))
+              );
+            })
+          ),
+          passed.length > 0 && e("div", { style: { marginBottom:14 }},
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:10, letterSpacing:2, color:"#ef4444", marginBottom:8, textTransform:"uppercase" }}, "Passed"),
+            passed.map(function(p) {
+              return e("div", { key:p.id, style: {
+                display:"flex", justifyContent:"space-between", alignItems:"center",
+                padding:"10px 12px", marginBottom:5, borderRadius:10,
+                background:"#ef444410", border:"1px solid #ef444422",
+              }},
+                e("span", { style: { fontFamily:"'DM Sans'", fontSize:13, color:"#fecaca" }}, p.address),
+                e("span", { style: { fontFamily:"'DM Mono'", fontSize:11, color:"#ef4444aa", flexShrink:0, marginLeft:8 }}, fmt(p.listPrice))
+              );
+            })
+          ),
+          e("div", { style: { display:"flex", gap:10, justifyContent:"center", paddingBottom:4 }},
+            e("button", { onClick:reset, style: {
+              fontFamily:"'DM Mono', monospace", fontSize:12, letterSpacing:1,
+              padding:"12px 24px", borderRadius:12, border:"1px solid #ffffff22",
+              background:"#ffffff0a", color:"#fff", cursor:"pointer", textTransform:"uppercase",
+            }}, "Start Over"),
+            e("button", { onClick:refresh, style: {
+              fontFamily:"'DM Mono', monospace", fontSize:12, letterSpacing:1,
+              padding:"12px 24px", borderRadius:12, border:"1px solid #4ade8033",
+              background:"#4ade800a", color:"#4ade80", cursor:"pointer", textTransform:"uppercase",
+            }}, "↻ Refresh")
+          )
+        )
+      )
+    :
+      e(React.Fragment, null,
+        e("div", { style: {
+          position:"relative", width:"min(92vw, 380px)",
+          flex:"1 1 auto", maxHeight:480, minHeight:280, marginBottom:12,
+        }},
+          properties.slice(current, current + 3).reverse().map(function(prop, i, arr) {
+            var stackIndex = arr.length - 1 - i;
+            var isTop = stackIndex === 0;
+            var pal = PALETTES[(current + stackIndex) % PALETTES.length];
+            var transform = "scale(" + (1 - stackIndex * 0.04) + ") translateY(" + (stackIndex * 10) + "px)";
+            if (isTop && exiting) {
+              transform = "translateX(" + (exiting === "right" ? 400 : -400) + "px) rotate(" + (exiting === "right" ? 18 : -18) + "deg)";
+            }
+            return e(PropertyCard, {
+              key:prop.id, property:prop, palette:pal,
+              active:isTop && !exiting,
+              onSwipeLeft:function(){doSwipe("left");},
+              onSwipeRight:function(){doSwipe("right");},
+              style: {
+                position:"absolute", inset:0, zIndex:10 - stackIndex,
+                transform:transform,
+                opacity:isTop && exiting ? 0 : 1,
+                pointerEvents:isTop ? "auto" : "none",
+              },
+            });
+          })
+        ),
+        e("div", { style: { display:"flex", gap:16, alignItems:"center", flexShrink:0 }},
+          e("button", { onClick:function(){doSwipe("left");}, "aria-label":"Pass", style: {
+            width:54, height:54, borderRadius:"50%",
+            background:"#ef444418", border:"2px solid #ef444444",
+            color:"#ef4444", fontSize:22, cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}, "✕"),
+          e("button", { onClick:function(){properties[current] && properties[current].link && window.open(properties[current].link,"_blank");}, "aria-label":"Redfin", style: {
+            width:42, height:42, borderRadius:"50%",
+            background:"#60a5fa18", border:"2px solid #60a5fa44",
+            color:"#60a5fa", fontSize:16, cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}, "↗"),
+          e("button", { onClick:function(){doSwipe("right");}, "aria-label":"Interested", style: {
+            width:54, height:54, borderRadius:"50%",
+            background:"#22c55e18", border:"2px solid #22c55e44",
+            color:"#22c55e", fontSize:22, cursor:"pointer",
+            display:"flex", alignItems:"center", justifyContent:"center",
+          }}, "♥")
+        ),
+        e("p", { style: {
+          fontFamily:"'DM Mono', monospace", fontSize:10, color:"#444",
+          marginTop:8, letterSpacing:1, textTransform:"uppercase", flexShrink:0,
+        }}, "Swipe or tap buttons")
+      )
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(e(App));
+</script>
+</body>
+</html>
