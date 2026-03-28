@@ -79,7 +79,7 @@ function parseTags(notes, listPrice, soldPrice) {
 }
 
 function loadSheet(callback) {
-  Papa.parse(SHEET_CSV_URL, {
+  Papa.parse(SHEET_CSV_URL + "&_t=" + Date.now(), {
     download: true,
     header: false,
     skipEmptyLines: true,
@@ -251,8 +251,10 @@ function AddModal(props) {
       setStatus("success");
       setResult({ address: "Property added!" });
       setTimeout(function() {
-        onSuccess && onSuccess();
-      }, 1500);
+        setRedfinUrl("");
+        setNotes("");
+        setStatus("idle");
+      }, 2000);
     })
     .catch(function(err) {
       setStatus("error");
@@ -356,7 +358,7 @@ function AddModal(props) {
       status === "success" && e("div", { style: {
         fontFamily:"'DM Sans', sans-serif", fontSize:12, color:"#4ade80",
         marginTop:10, textAlign:"center",
-      }}, "Added to your sheet! Refreshing..."),
+      }}, "Added to your sheet! Tap ↻ in about a minute to see it."),
 
       // Helper text
       e("div", { style: {
