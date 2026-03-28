@@ -96,23 +96,29 @@ function loadSheet(callback) {
         var r = rows[i];
         var address = (r[0] || "").trim();
         if (!address) continue;
-        var link = (r[1] || "").trim();
+        var displayText = (r[1] || "").trim();
         var listPrice = parsePrice(r[2]);
         var soldPrice = parsePrice(r[3]);
         var notes = (r[4] || "").trim();
         var imageUrl = (r[5] || "").trim();
         var area = "";
-        if (link.includes("Glenview")) area = "Glenview, IL";
-        else if (link.includes("Northbrook")) area = "Northbrook, IL";
+        if (displayText.includes("Glenview") || address.includes("Glenview")) area = "Glenview, IL";
+        else if (displayText.includes("Northbrook") || address.includes("Northbrook")) area = "Northbrook, IL";
         else {
-          var match = link.match(/\/([A-Z][a-z]+(?:-[A-Z][a-z]+)*)\//);
-          area = match ? match[1].replace(/-/g, " ") + ", IL" : "IL";
+          // Try to extract city from display text like "123 Main St, CityName, IL 60062 | Redfin"
+          var cityMatch = displayText.match(/,\s*([A-Za-z\s]+),\s*IL/);
+          area = cityMatch ? cityMatch[1].trim() + ", IL" : "IL";
         }
+        // Build Redfin search link from the address + area
+        var searchAddr = address + ", " + area;
+        var link = "https://www.redfin.com/search#query=" + encodeURIComponent(searchAddr);
+        // If display text is already a URL, use it directly
+        if (displayText.startsWith("http")) link = displayText;
         properties.push({
           id: i,
           address: address,
           area: area,
-          link: link.startsWith("http") ? link : (link ? "https://" + link : ""),
+          link: link,
           listPrice: listPrice,
           soldPrice: soldPrice,
           notes: notes || "No notes",
