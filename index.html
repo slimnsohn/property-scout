@@ -105,13 +105,13 @@ function loadSheet(callback) {
         if (displayText.includes("Glenview") || address.includes("Glenview")) area = "Glenview, IL";
         else if (displayText.includes("Northbrook") || address.includes("Northbrook")) area = "Northbrook, IL";
         else {
-          // Try to extract city from display text like "123 Main St, CityName, IL 60062 | Redfin"
-          var cityMatch = displayText.match(/,\s*([A-Za-z\s]+),\s*IL/);
-          area = cityMatch ? cityMatch[1].trim() + ", IL" : "IL";
+          var cityMatch = displayText.match(/\/([A-Z][a-z]+(?:-[A-Z][a-z]+)*)\//);
+          if (cityMatch) area = cityMatch[1].replace(/-/g, " ") + ", IL";
+          else area = "IL";
         }
-        // Build Redfin search link from the address + area
-        var searchAddr = address + ", " + area;
-        var link = "https://www.redfin.com/search#query=" + encodeURIComponent(searchAddr);
+        // Build link from column B (raw URL) or fallback to Google search
+        var rawLink = (r[1] || "").trim();
+        var link = rawLink.startsWith("http") ? rawLink : "https://www.google.com/search?q=" + encodeURIComponent(address + " " + area + " redfin");
         // If display text is already a URL, use it directly
         if (displayText.startsWith("http")) link = displayText;
         properties.push({
@@ -214,7 +214,7 @@ function PropertyCard(props) {
         ),
         e("div", { style: { flex:1 }}),
         property.link && e("a", {
-          href:property.link, target:"_blank", rel:"noopener noreferrer",
+          href:property.link, rel:"noreferrer",
           style: {
             display:"inline-flex", alignItems:"center", gap:6,
             fontFamily:"'DM Mono', monospace", fontSize:11, letterSpacing:1,
@@ -222,7 +222,7 @@ function PropertyCard(props) {
             padding:"8px 14px", borderRadius:8, alignSelf:"flex-start",
             background:pal.accent+"11", border:"1px solid "+pal.accent+"22",
           }
-        }, "VIEW ON REDFIN →")
+        }, "VIEW LISTING →")
       )
     )
   );
@@ -413,7 +413,7 @@ function App() {
         color:"#aaa", fontSize:20, cursor:"pointer",
         display:"flex", alignItems:"center", justifyContent:"center",
       }}, "←"),
-      e("button", { onClick:function(){ window.open(properties[current].link,"_blank"); }, "aria-label":"Redfin", style: {
+      e("button", { onClick:function(){ window.location.href = properties[current].link; }, "aria-label":"Redfin", style: {
         width:42, height:42, borderRadius:"50%",
         background:"#60a5fa18", border:"2px solid #60a5fa44",
         color:"#60a5fa", fontSize:16, cursor:"pointer",
