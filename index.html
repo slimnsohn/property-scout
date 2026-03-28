@@ -44,6 +44,7 @@
 //    C: List Price
 //    D: Sold Price
 //    E: Notes
+//    F: Image URL (optional — right-click listing photo → Copy image address)
 // ============================================================
 var SHEET_CSV_URL = "https://docs.google.com/spreadsheets/d/e/2PACX-1vTTZyB3gMzIQ1XaYo16GK_9DNgLxd5nkMj36vhaJ7ytYB5--c0mG_JSaAGczSNpmkUXBeUtgCMlwog7/pub?gid=0&single=true&output=csv";
 // ============================================================
@@ -111,6 +112,7 @@ function loadSheet(callback) {
         var listPrice = parsePrice(r[2]);
         var soldPrice = parsePrice(r[3]);
         var notes = (r[4] || "").trim();
+        var imageUrl = (r[5] || "").trim();
         // Extract area from link or default
         var area = "";
         if (link.includes("Glenview")) area = "Glenview, IL";
@@ -127,6 +129,7 @@ function loadSheet(callback) {
           listPrice: listPrice,
           soldPrice: soldPrice,
           notes: notes || "No notes",
+          imageUrl: imageUrl.startsWith("http") ? imageUrl : "",
           tags: parseTags(notes, listPrice, soldPrice),
         });
       }
@@ -219,20 +222,45 @@ function PropertyCard(props) {
       boxShadow:"0 16px 48px "+pal.bg+"88, inset 0 1px 0 "+pal.accent+"22",
       overflow:"hidden", display:"flex", flexDirection:"column",
     }},
-      e("div", { style: {
-        flex:"0 0 auto", padding:"14px 18px 12px", position:"relative",
-        background:"linear-gradient(135deg, "+pal.accent+"22, "+pal.accent+"06)", overflow:"hidden",
-      }},
-        e("div", { style: { position:"absolute", top:-40, right:-40, width:120, height:120, borderRadius:"50%", background:pal.accent+"11" }}),
-        e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:3, color:pal.accent+"88", textTransform:"uppercase", marginBottom:6 }},
-          property.area.split(",")[0] || "Property"
-        ),
+      // Hero — image or gradient fallback
+      property.imageUrl ?
         e("div", { style: {
-          fontFamily:"'Playfair Display', Georgia, serif", fontSize:"clamp(20px, 5.5vw, 28px)",
-          fontWeight:700, color:pal.light, lineHeight:1.15, letterSpacing:-0.5,
-        }}, property.address),
-        e("div", { style: { fontFamily:"'DM Sans', sans-serif", fontSize:11, color:pal.light+"88", marginTop:3 }}, property.area)
-      ),
+          flex:"0 0 auto", position:"relative", overflow:"hidden",
+          height:"clamp(130px, 35vw, 180px)",
+        }},
+          e("img", { src:property.imageUrl, alt:property.address, style: {
+            width:"100%", height:"100%", objectFit:"cover", display:"block",
+          }}),
+          e("div", { style: {
+            position:"absolute", inset:0,
+            background:"linear-gradient(0deg, "+pal.bg+"ee 0%, "+pal.bg+"88 40%, transparent 100%)",
+          }}),
+          e("div", { style: { position:"absolute", bottom:10, left:18, right:18 }},
+            e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:3, color:pal.accent, textTransform:"uppercase", marginBottom:4, textShadow:"0 1px 3px rgba(0,0,0,0.5)" }},
+              property.area.split(",")[0] || "Property"
+            ),
+            e("div", { style: {
+              fontFamily:"'Playfair Display', Georgia, serif", fontSize:"clamp(20px, 5.5vw, 28px)",
+              fontWeight:700, color:"#fff", lineHeight:1.15, letterSpacing:-0.5, textShadow:"0 2px 6px rgba(0,0,0,0.6)",
+            }}, property.address),
+            e("div", { style: { fontFamily:"'DM Sans', sans-serif", fontSize:11, color:"#ffffffaa", marginTop:3, textShadow:"0 1px 3px rgba(0,0,0,0.5)" }}, property.area)
+          )
+        )
+      :
+        e("div", { style: {
+          flex:"0 0 auto", padding:"14px 18px 12px", position:"relative",
+          background:"linear-gradient(135deg, "+pal.accent+"22, "+pal.accent+"06)", overflow:"hidden",
+        }},
+          e("div", { style: { position:"absolute", top:-40, right:-40, width:120, height:120, borderRadius:"50%", background:pal.accent+"11" }}),
+          e("div", { style: { fontFamily:"'DM Mono', monospace", fontSize:9, letterSpacing:3, color:pal.accent+"88", textTransform:"uppercase", marginBottom:6 }},
+            property.area.split(",")[0] || "Property"
+          ),
+          e("div", { style: {
+            fontFamily:"'Playfair Display', Georgia, serif", fontSize:"clamp(20px, 5.5vw, 28px)",
+            fontWeight:700, color:pal.light, lineHeight:1.15, letterSpacing:-0.5,
+          }}, property.address),
+          e("div", { style: { fontFamily:"'DM Sans', sans-serif", fontSize:11, color:pal.light+"88", marginTop:3 }}, property.area)
+        ),
       e("div", { style: { flex:1, padding:"14px 18px", display:"flex", flexDirection:"column", minHeight:0 }},
         e("div", { style: { display:"flex", gap:20, marginBottom:12 }},
           e("div", null,
